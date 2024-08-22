@@ -1,0 +1,255 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no, width=device-width">
+    <title>最优路径规划</title>
+    <link rel="stylesheet" href="https://a.amap.com/jsapi_demos/static/demo-center/css/demo-center.css" />
+    <style>
+        html, body, #container {
+            width: 100%;
+            height: 100%;
+        }
+        .input-card .btn{
+            margin-right: 1.2rem;
+            width: 9rem;
+        }
+        .input-card .btn:last-child{
+            margin-right: 0;
+        }
+        #panel {
+            position: fixed;
+            background-color: white;
+            max-height: 80%;
+            overflow-y: auto;
+            top: 10px;
+            right: 10px;
+            width: 280px;
+        }
+        #panel .amap-lib-driving {
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .waypoint-marker {
+            background-color: red;
+            border: 0 solid #999;
+            border-radius: 50%;
+            padding: 2px;
+            font-size: 18px;
+            width: 20px;
+            height: 20px;
+            line-height: 20px;
+            text-align: center;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="btn"><a href="https://wia.amap.com/#/manage/maps?orgId=10016864790063206964" target="_blank">打开高德顺路规划开始导航</a></div>
+    <div id="container"></div>
+    <div id="panel"></div>
+    <div class="input-card">
+        <h4>轨迹回放控制</h4>
+        <div class="input-item">
+            <input type="button" class="btn" value="开始动画" id="start" onclick="startAnimation()"/>
+            <input type="button" class="btn" value="暂停动画" id="pause" onclick="pauseAnimation()"/>
+        </div>
+        <div class="input-item">
+            <input type="button" class="btn" value="继续动画" id="resume" onclick="resumeAnimation()"/>
+            <input type="button" class="btn" value="停止动画" id="stop" onclick="stopAnimation()"/>
+        </div>
+    </div>
+<script>window._AMapSecurityConfig = {
+    securityJsCode:"e3b02aa7b23dd208551919c07eb9e555"
+};
+</script>
+<script src="https://a.amap.com/jsapi_demos/static/demo-center/js/demoutils.js"></script>
+<script type="text/javascript" src="https://webapi.amap.com/maps?v=2.0&key=29af353df5c0aa335aabe29803314654"></script>
+<script>
+        // 定义一个名为map的变量，用于创建高德地图实例
+        var map = new AMap.Map("container", {
+            // 允许地图在容器大小变化时自动调整大小
+            resizeEnable: true,
+            center: [106.487482, 29.466757],
+            zoom: 20
+        });
+
+        // 使用AMap.plugin方法加载工具条、驾车路线规划和移动动画插件
+        AMap.plugin(['AMap.ToolBar', 'AMap.Driving','AMap.MoveAnimation'], function() {
+            var toolbar = new AMap.ToolBar();
+            map.addControl(toolbar);
+            var driving = new AMap.Driving({
+                policy: AMap.DrivingPolicy.LEAST_DISTANCE,
+                map: map,
+                panel: "panel"
+            });
+
+
+            var startLngLat = [106.487482, 29.466757];
+            var endLngLat = [106.487482, 29.466757];
+            var waypoints = [
+                    [106.481106,29.470680],
+                    [106.479378,29.470986],
+                    [106.474584,29.470207],
+                    [106.481896,29.470212],
+                    [106.479915,29.466312],
+                    [106.478699,29.461353],
+                    [106.479933,29.470335],
+                    [106.482779,29.466648],
+                    [106.479917,29.470709],
+                    [106.482120,29.474168],
+                    [106.482123,29.479361],
+                    [106.480696,29.474739],
+                    [106.479964,29.475569],
+                    [106.479059,29.479727],
+                    [106.483931,29.478913],
+                    [106.490380,29.483847],
+                    [106.485725,29.484441],
+                    [106.482299,29.484464],
+                    [106.476190,29.450165],
+                    [106.477805,29.448300],
+                    [106.493729,29.430278],
+                    [106.466937,29.427011],
+                    [106.467709,29.426747],
+                    [106.468251,29.426691],
+                    [106.497115,29.475752],
+                    [106.502096,29.489369],
+                    [106.499608,29.488900],
+                    [106.501037,29.490403],
+                    [106.503032,29.494443],
+                    [106.503036,29.497990],
+                    [106.503021,29.493900],
+                    [106.503147,29.493130],
+                    [106.503543,29.493588],
+                    [106.550483,29.563707],
+                    [106.472958,29.493534],
+                    [106.458248,29.485885],
+                    [106.478703,29.469982],
+            ];
+
+            // 定义当前起始点
+            var currentStart = startLngLat;
+            // 创建标记并沿着完整路径播放动画
+            var marker = new AMap.Marker({
+                map: map,
+                position: startLngLat,
+                icon: 'https://a.amap.com/jsapi_demos/static/demo-center-v2/car.png', // 可以自定义标记的图标
+                offset: new AMap.Pixel(-13, -26),
+                autoRotation: true // 标记会自动旋转
+            });
+
+            // 分批处理，每批16个途径点
+            var batches = [];
+            for (var i = 0, len = waypoints.length; i < len; i += 16) {
+                // 将每批途径点添加到batches数组中
+                batches.push(waypoints.slice(i, i + 16));
+            }
+
+            // 将batches数组转换为Promise数组
+            var batchPromises = batches.map(function(batch, index) {
+                // 在每个批次的开始，设置当前起始点
+                batch.unshift(currentStart); // 将当前起始点添加到批次的开头
+                // 更新当前起始点为该批次的最后一个途径点
+                currentStart = batch[batch.length - 1];
+                // 定义每个批次的终点
+                var batchEnd = index === batches.length - 1 ? endLngLat : batch[batch.length - 1];
+                return new Promise(function(resolve, reject) {
+                    driving.search(batch[0], batchEnd, { waypoints: batch.slice(1, -1) }, function(status, result) {
+                        if (status === 'complete') {
+                            resolve(result);
+                            // 更新当前起始点为该批次的最后一个途径点
+                            currentStart = batch[batch.length - 1];
+
+
+                            // 初始化全局变量，用于跟踪途径点的编号
+                            var globalWaypointIndex = 0;
+                            // 在这里添加途径点编号
+                             var globalIndex = index * 16; // 计算全局索引的起始点
+                            batch.forEach(function(waypoint, indexInBatch) {
+                                if (indexInBatch > 0) { // 跳过第一个点，因为它是上一个批次的结束点
+                                    var marker = new AMap.Marker({
+                                        position: waypoint,
+                                        content: '<div class="waypoint-marker">' + (globalIndex + indexInBatch) + '</div>',
+                                        offset: new AMap.Pixel(-10, -10)
+                                    });
+                                    marker.setMap(map);
+                                }
+                            });
+                        } else {
+                            reject(result);
+                        }
+                    });
+                });
+            });
+
+            Promise.all(batchPromises).then(function(results) {
+                    // 这里处理所有结果，比如将路线添加到地图上
+                    results.forEach(function (result, index) {
+                        // 处理每个批次的路线结果
+                        var path = result.routes[0].steps.map(function (step) {
+                            return step.path; // 这里假设 step.path 已经是一个扁平的数组
+                        });
+                        // 使用 reduce 和 concat 来合并所有路径的数组
+                        var fullPath = results.reduce(function (acc, result) {
+                            return acc.concat(result.routes[0].steps.map(function (step) {
+                                return step.path;
+                            }).reduce(function (pathAcc, path) {
+                                return pathAcc.concat(path);
+                            }, []));
+                        }, []);
+
+                        // 绘制轨迹
+                        var polyline = new AMap.Polyline({
+                            map: map,
+                            path: fullPath,
+                            showDir: true,
+                            strokeColor: "#28F",  // 线颜色
+                            strokeWeight: 6,      // 线宽
+                        });
+
+                        var passedPolyline = new AMap.Polyline({
+                            map: map,
+                            strokeColor: "#AF5",  // 线颜色
+                            strokeWeight: 6,      // 线宽
+                        });
+
+                        marker.on('moving', function (e) {
+                            passedPolyline.setPath(e.passedPath);
+                            map.setCenter(e.target.getPosition(), true);
+                        });
+
+                        map.setFitView();
+
+
+                        window.startAnimation = function startAnimation() {
+                                marker.moveAlong(fullPath, {
+                                    duration: 200, // 每一段的时长
+                                });
+                        };
+
+                        window.pauseAnimation = function () {
+                            marker.pauseMove();
+                        };
+
+                        window.resumeAnimation = function () {
+                            marker.resumeMove();
+                        };
+
+                        window.stopAnimation = function () {
+                            marker.stopMove();
+                        };
+
+                    })
+
+            }).catch(function(error) {
+                // 处理错误情况
+                console.error('路径规划失败:', error);
+                // 这里可以添加更多的错误处理逻辑，例如显示错误信息给用户
+            });
+
+
+        });
+    </script>
+</body>
+</html>
